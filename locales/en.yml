@@ -1,0 +1,7 @@
+en:
+  lita:
+    handlers:
+      chilean_bip:
+        invalid_number: "Mmmh.. It seems like you gave me an invalid number"
+        service_down: "Ouch! I can't get your balance for now"
+        actual_balance: "Your Balance: %{balance} (to date %{date})"
