@@ -5,7 +5,7 @@ module Lita
     class ChileanBip < Handler
 
       REDIS_KEY = 'lita-chilean-bip'
-      QUERY_URL = 'http://saldobip.com'
+      QUERY_URL = 'http://saldobip.com/'
       PARSE_SELECTOR = '#resultados #datos strong'
       POST_HEADERS = {
         'Content-Type' => 'application/x-www-form-urlencoded',
@@ -15,9 +15,9 @@ module Lita
         'User-Agent' => 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/33.0.1750.146 Safari/537.36'
       }
 
-      route %r{^bip\s*(\d+)}i, :bip_balance, help: { 'bip ...' => 'gets the balance for BIP card ...' }
-      route %r{^my bip is (\d+)}i, :store_bip, help: { 'my bip is ...' => "stores the user's BIP card ..." }
-      route %r{^bip}i, :stored_bip_balance, help: { 'bip' => "gets the balance for stored user's BIP card" }
+      route %r{^bip\s*(\d+)$}i, :bip_balance, help: { 'bip ...' => 'gets the balance for BIP card ...' }
+      route %r{^my bip is (\d+)$}i, :store_bip, help: { 'my bip is ...' => "stores the user's BIP card ..." }
+      route %r{^bip$}i, :stored_bip_balance, help: { 'bip' => "gets the balance for stored user's BIP card" }
 
       def bip_balance(response)
         card_number = card_number_from_response(response)
@@ -61,13 +61,7 @@ module Lita
       end
 
       def post_query_for_card(card_number)
-        conn = Faraday.new(:url => QUERY_URL) do |faraday|
-          faraday.request  :url_encoded             # form-encode POST params
-          faraday.response :logger                  # log requests to STDOUT
-          faraday.adapter  Faraday.default_adapter  # make requests with Net::HTTP
-        end
-        response = conn.post '/', { NumTarjeta: card_number, pedirSaldo: '' }, POST_HEADERS
-        response.body
+        http.post(QUERY_URL, { NumTarjeta: card_number, pedirSaldo: '' }, POST_HEADERS).body
       end
 
       def parse_data_from_html(response)
