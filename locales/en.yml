@@ -2,6 +2,7 @@ en:
   lita:
     handlers:
       chilean_bip:
+        card_stored: "Yay! I'll remember it for later."
         invalid_number: "Mmmh.. It seems like you gave me an invalid number"
         service_down: "Ouch! I can't get your balance for now"
-        actual_balance: "Your Balance: %{balance} (to date %{date})"
+        actual_balance: "..and your balance is: %{balance} (until %{date})"

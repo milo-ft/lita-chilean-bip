@@ -1,90 +1,90 @@
+require 'net/http'
+
 module Lita
   module Handlers
-    class Gitlab < Handler
+    class ChileanBip < Handler
 
-      def self.default_config(config)
-        config.default_room = '#general'
+      REDIS_KEY = 'lita-chilean-bip'
+
+      route %r{^bip\s*(\d+)}i, :bip_balance, help: { 'bip ...' => 'gets the balance for BIP card ...' }
+      route %r{^my bip is (\d+)}i, :store_bip, help: { 'my bip is ...' => "stores the user's BIP card ..." }
+      route %r{^bip}i, :stored_bip_balance, help: { 'bip' => "gets the balance for stored user's BIP card" }
+
+      def bip_balance(response)
+        card_number = card_number_from_response(response)
+        return response.reply interpolate_message('invalid_number') unless validate_card_number card_number
+        balance_for_card_number(card_number, response)
       end
 
-      http.post '/lita/gitlab', :receive
+      def store_bip(response)
+        card_number = card_number_from_response(response)
+        return response.reply interpolate_message('invalid_number') unless validate_card_number card_number
+        key_user = key_from_user response.user
+        redis.hset(REDIS_KEY, key_user, card_number)
+        response.reply interpolate_message('card_stored', {})
+      end
 
-      def receive(request, response)
-        json_body = request.params['payload'] || extract_json_from_request(request)
-        data = symbolize parse_payload(json_body)
-        message = format_message(data)
-        targets = request.params['targets'] || '#general'
-        rooms = []
-        targets.split(',').each do |param_target|
-          rooms << param_target
-        end
-        rooms.each do |room|
-          target = Source.new(room: room)
-          robot.send_message(target, message)
-        end
+      def stored_bip_balance(response)
+        key_user = key_from_user response.user
+        card_number = redis.hget(REDIS_KEY, key_user)
+        balance_for_card_number(card_number, response)
       end
 
       private
 
-      def extract_json_from_request(request)
-        request.body.rewind
-        request.body.read
+      def card_number_from_response(response)
+        response.matches[0][0]
       end
 
-      def format_message(data)
-        data.key?(:event_name) ? system_message(data) : web_message(data)
+      def key_from_user(user)
+        user.to_s.downcase.strip
       end
 
-      def system_message(data)
-        build_message "system.#{data[:event_name]}", data
-      rescue
-        Lita.logger.warn "Error formatting message: #{data.inspect}"
+      def balance_for_card_number(card_number, response)
+        html = post_query_for_card card_number
+        data = parse_data_from_html html
+        return response.reply interpolate_message('service_down') if data[:balance] =~ /.*mal.*/
+        response.reply interpolate_message('actual_balance', data)
       end
 
-      def web_message(data)
-        if data.key? :object_kind
-          if data[:object_attributes].key? :target_branch
-            # Merge request
-            data[:object_attributes][:link] = "#{data[:object_attributes][:target_branch]}/#{data[:object_attributes][:iid]}"
-            build_message "web.#{data[:object_kind]}.#{data[:object_attributes][:state]}", data[:object_attributes]
-          else
-            # Issue
-            build_message "web.#{data[:object_kind]}.#{data[:object_attributes][:state]}", data[:object_attributes]
-          end
-        else
-          # Push has no object kind
-          branch = data[:ref].split('/').drop(2).join('/')
-          data[:link] = data[:repository][:name]
-          if data[:before] =~ /^0+$/
-            build_message 'web.push.new_branch', data
-          else
-            build_message 'web.push.add_to_branch', data
-          end
+      def validate_card_number(card_number)
+        card_number =~ /\d{8}/
+      end
+
+      def post_query_for_card(card_number)
+        headers = {
+          'Content-Type' => 'application/x-www-form-urlencoded',
+          'Host' => 'saldobip.com',
+          'Origin' => 'http://saldobip.com',
+          'Referer' => 'http://saldobip.com/',
+          'User-Agent' => 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/33.0.1750.146 Safari/537.36'
+        }
+
+        conn = Faraday.new(:url => 'http://saldobip.com') do |faraday|
+          faraday.request  :url_encoded             # form-encode POST params
+          faraday.response :logger                  # log requests to STDOUT
+          faraday.adapter  Faraday.default_adapter  # make requests with Net::HTTP
         end
-      rescue
-        Lita.logger.warn "Error formatting message: #{data.inspect}"
+
+        response = conn.post '/', { NumTarjeta: card_number, pedirSaldo: '' }, headers
+        response.body
       end
 
-      # General methods
+      def parse_data_from_html(response)
+        tag_data = []
+        doc = Nokogiri::HTML(response)
+        doc.css('#resultados #datos strong').each do |tag|
+          tag_data << tag.content
+        end
+        data = tag_data.empty? ? {} : { balance: tag_data[0], date: tag_data[1] }
+        data
+      end
 
-      def build_message(key, data)
+      def interpolate_message(key, data={})
         t(key) % data
       end
-
-      def parse_payload(payload)
-        MultiJson.load(payload)
-      rescue MultiJson::LoadError => e
-        Lita.logger.error("Could not parse JSON payload from Github: #{e.message}")
-        return
-      end
-
-      def symbolize(obj)
-        return obj.inject({}){|memo,(k,v)| memo[k.to_sym] =  symbolize(v); memo} if obj.is_a? Hash
-        return obj.inject([]){|memo,v    | memo           << symbolize(v); memo} if obj.is_a? Array
-        return obj
-      end
-
     end
 
-    Lita.register_handler(Gitlab)
+    Lita.register_handler(ChileanBip)
   end
 end
