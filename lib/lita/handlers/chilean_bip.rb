@@ -5,6 +5,15 @@ module Lita
     class ChileanBip < Handler
 
       REDIS_KEY = 'lita-chilean-bip'
+      QUERY_URL = 'http://saldobip.com'
+      PARSE_SELECTOR = '#resultados #datos strong'
+      POST_HEADERS = {
+        'Content-Type' => 'application/x-www-form-urlencoded',
+        'Host' => 'saldobip.com',
+        'Origin' => 'http://saldobip.com',
+        'Referer' => 'http://saldobip.com/',
+        'User-Agent' => 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/33.0.1750.146 Safari/537.36'
+      }
 
       route %r{^bip\s*(\d+)}i, :bip_balance, help: { 'bip ...' => 'gets the balance for BIP card ...' }
       route %r{^my bip is (\d+)}i, :store_bip, help: { 'my bip is ...' => "stores the user's BIP card ..." }
@@ -37,7 +46,7 @@ module Lita
       end
 
       def key_from_user(user)
-        user.to_s.downcase.strip
+        user.id
       end
 
       def balance_for_card_number(card_number, response)
@@ -52,28 +61,19 @@ module Lita
       end
 
       def post_query_for_card(card_number)
-        headers = {
-          'Content-Type' => 'application/x-www-form-urlencoded',
-          'Host' => 'saldobip.com',
-          'Origin' => 'http://saldobip.com',
-          'Referer' => 'http://saldobip.com/',
-          'User-Agent' => 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/33.0.1750.146 Safari/537.36'
-        }
-
-        conn = Faraday.new(:url => 'http://saldobip.com') do |faraday|
+        conn = Faraday.new(:url => QUERY_URL) do |faraday|
           faraday.request  :url_encoded             # form-encode POST params
           faraday.response :logger                  # log requests to STDOUT
           faraday.adapter  Faraday.default_adapter  # make requests with Net::HTTP
         end
-
-        response = conn.post '/', { NumTarjeta: card_number, pedirSaldo: '' }, headers
+        response = conn.post '/', { NumTarjeta: card_number, pedirSaldo: '' }, POST_HEADERS
         response.body
       end
 
       def parse_data_from_html(response)
         tag_data = []
         doc = Nokogiri::HTML(response)
-        doc.css('#resultados #datos strong').each do |tag|
+        doc.css(PARSE_SELECTOR).each do |tag|
           tag_data << tag.content
         end
         data = tag_data.empty? ? {} : { balance: tag_data[0], date: tag_data[1] }

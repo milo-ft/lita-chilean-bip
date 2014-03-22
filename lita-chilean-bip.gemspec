@@ -1,6 +1,6 @@
 Gem::Specification.new do |spec|
   spec.name          = 'lita-chilean-bip'
-  spec.version       = '1.1.0'
+  spec.version       = '1.1.1'
   spec.authors       = ['Emilio Figueroa']
   spec.email         = ['emiliofigueroatorres@gmail.com']
   spec.description   = %q{A Lita handler for checking the BIP card balance}
